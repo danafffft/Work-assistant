@@ -9,7 +9,9 @@ TENANT = os.getenv('MICROSOFT_TENANT_ID', 'common')
 REDIRECT = os.getenv('MICROSOFT_REDIRECT_URI', 'http://localhost:8000/auth/callback')
 SCOPES = 'User.Read Mail.ReadWrite Calendars.ReadWrite'
 SESSIONS, PENDING = {}, {}
-CATEGORIES = ['Звіти', 'Від людей', 'Навчання', 'Автоматичні повідомлення', 'Jira', 'Confluence']
+CATEGORIES = ['Звіти', 'Від людей', 'Навчання', 'Автоматичні повідомлення', 'Jira та Confluence']
+# Remove old assistant labels when saving the merged category.
+MANAGED_CATEGORIES = CATEGORIES + ['Jira', 'Confluence']
 
 
 def has_person_name(name):
@@ -45,8 +47,7 @@ def classify(m):
     )
     category = 'Автоматичні повідомлення'
     if m.get('hasAttachments') is True: category = 'Звіти'
-    elif 'jira' in text: category = 'Jira'
-    elif 'confluence' in text: category = 'Confluence'
+    elif 'jira' in text or 'confluence' in text: category = 'Jira та Confluence'
     elif automated: category = 'Автоматичні повідомлення'
     elif any(w in text for w in ('навчання', 'вебінар', 'курс', 'training', 'webinar', 'course', 'learning')): category = 'Навчання'
     elif any(w in address for w in ('noreply', 'no-reply', 'notification', 'newsletter', 'donotreply')): category = 'Автоматичні повідомлення'
@@ -213,7 +214,7 @@ class Handler(BaseHTTPRequestHandler):
             if s.get('mode') == 'desktop':
                 import desktop_outlook
                 try:
-                    if self.path == '/api/categorize': desktop_outlook.categorize(s['store'], m, CATEGORIES)
+                    if self.path == '/api/categorize': desktop_outlook.categorize(s['store'], m, MANAGED_CATEGORIES)
                     elif self.path == '/api/open': desktop_outlook.open_message(s['store'], m['id'])
                     else: return self.send({'error': 'Невідома дія'}, 400)
                 except Exception:
@@ -221,7 +222,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send({'ok': True})
             if self.path == '/api/categorize':
                 current = graph(s, path + '?$select=categories')
-                categories = [c for c in current.get('categories', []) if c not in CATEGORIES]
+                categories = [c for c in current.get('categories', []) if c not in MANAGED_CATEGORIES]
                 graph(s, path, {'categories': categories + [m['category']], 'importance': m['priority']}, 'PATCH')
             else: return self.send({'error': 'Невідома дія'}, 400)
             self.send({'ok': True})

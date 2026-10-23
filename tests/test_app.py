@@ -37,7 +37,7 @@ class Rules(unittest.TestCase):
         self.assertNotEqual(app.classify(self.message(subject='Щотижневий звіт', hasAttachments=False))['category'], 'Звіти')
 
     def test_categories(self):
-        for address, subject, category in [('jira@example.com','Оновлено','Jira'),('noreply@example.com','Confluence update','Confluence'),('noreply@example.com','Навчання Python','Навчання'),('noreply@example.com','Звіт','Автоматичні повідомлення')]:
+        for address, subject, category in [('jira@example.com','Оновлено','Jira та Confluence'),('noreply@example.com','Confluence update','Jira та Confluence'),('noreply@example.com','Навчання Python','Навчання'),('noreply@example.com','Звіт','Автоматичні повідомлення')]:
             with self.subTest(category=category): self.assertEqual(app.classify(self.message(address,subject))['category'],category)
     def test_priority(self):
         self.assertEqual(app.classify(self.message(subject='Терміново: допомога'))['priority'],'high')

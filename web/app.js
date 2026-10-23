@@ -2,8 +2,8 @@ const $ = s => document.querySelector(s);
 let connected=false, csrf='', busy=false, meetingsOnly=false, selectedId=null, desktop=false;
 let messages=[
 {id:'demo1',subject:'Терміново: узгодити план на понеділок',from:{emailAddress:{name:'Олена Коваль',address:'olena@example.com'}},bodyPreview:'Привіт! Переглянь, будь ласка, пропозицію та напиши, коли зручно обговорити.',category:'Від людей',priority:'high'},
-{id:'demo2',subject:'Jira · WA-42: завдання готове до перевірки',from:{emailAddress:{name:'Jira',address:'jira@example.com'}},bodyPreview:'Оновлено статус завдання вашої команди.',category:'Jira',priority:'normal'},
-{id:'demo3',subject:'Confluence · Оновлення бази знань',from:{emailAddress:{name:'Confluence',address:'confluence@example.com'}},category:'Confluence',priority:'normal'},
+{id:'demo2',subject:'Jira · WA-42: завдання готове до перевірки',from:{emailAddress:{name:'Jira',address:'jira@example.com'}},bodyPreview:'Оновлено статус завдання вашої команди.',category:'Jira та Confluence',priority:'normal'},
+{id:'demo3',subject:'Confluence · Оновлення бази знань',from:{emailAddress:{name:'Confluence',address:'confluence@example.com'}},category:'Jira та Confluence',priority:'normal'},
 {id:'demo4',subject:'Навчання: робота з пріоритетами',from:{emailAddress:{name:'Learning',address:'learn@example.com'}},category:'Навчання',priority:'normal'},
 {id:'demo5',subject:'Ваш щотижневий звіт · report.xlsx',from:{emailAddress:{name:'Сповіщення',address:'noreply@example.com'}},category:'Звіти',priority:'normal',hasAttachments:true},
 {id:'demo6',subject:'Запрошення: планування спринту',from:{emailAddress:{name:'Андрій',address:'andriy@example.com'}},category:'Від людей',priority:'normal',meeting:true,meetingStatus:'Демо: календар не перевірявся'}];
