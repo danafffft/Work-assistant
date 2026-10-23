@@ -48,3 +48,30 @@ class CalendarTests(TestCase):
         result, appointment, response = self.scenario(missing=True)
         self.assertIn('ручний', result)
         response.Send.assert_not_called()
+
+
+class AttachmentTests(TestCase):
+    def item(self, attachments, html=''):
+        collection = Mock(Count=len(attachments))
+        collection.Item.side_effect = lambda index: attachments[index - 1]
+        return NS(Attachments=collection, HTMLBody=html)
+
+    def attachment(self, hidden=False, cid=''):
+        accessor = Mock()
+        accessor.GetProperty.side_effect = [hidden, cid]
+        return NS(PropertyAccessor=accessor)
+
+    def test_file_is_report(self):
+        self.assertTrue(desktop.has_file_attachments(self.item([self.attachment()])))
+
+    def test_signature_is_not_report(self):
+        self.assertFalse(desktop.has_file_attachments(self.item([self.attachment(cid='logo')], '<img src="cid:logo">')))
+
+    def test_hidden_is_not_report(self):
+        self.assertFalse(desktop.has_file_attachments(self.item([self.attachment(hidden=True)])))
+
+    def test_signature_and_file_is_report(self):
+        self.assertTrue(desktop.has_file_attachments(self.item([self.attachment(cid='logo'), self.attachment()], '<img src="cid:logo">')))
+
+    def test_no_files(self):
+        self.assertFalse(desktop.has_file_attachments(self.item([])))

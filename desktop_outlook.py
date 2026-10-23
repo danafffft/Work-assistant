@@ -24,6 +24,29 @@ def utc(value):
     return value.astimezone(timezone.utc)
 
 
+def has_file_attachments(item):
+    """Exclude hidden attachments and inline signature images from reports."""
+    html = str(getattr(item, 'HTMLBody', '') or '').casefold()
+    attachments = item.Attachments
+    for index in range(1, attachments.Count + 1):
+        attachment = attachments.Item(index)
+        hidden, content_id = False, ''
+        try:
+            hidden = bool(attachment.PropertyAccessor.GetProperty(
+                'http://schemas.microsoft.com/mapi/proptag/0x7FFE000B'))
+        except Exception:
+            pass  # Optional MAPI property may be absent on ordinary files.
+        try:
+            content_id = str(attachment.PropertyAccessor.GetProperty(
+                'http://schemas.microsoft.com/mapi/proptag/0x3712001F') or '').strip('<>').casefold()
+        except Exception:
+            pass
+        if hidden or (content_id and 'cid:' + content_id in html):
+            continue
+        return True
+    return False
+
+
 def messages(store_id):
     with outlook() as ns:
         inbox = ns.GetStoreFromID(store_id).GetDefaultFolder(6)
@@ -47,6 +70,7 @@ def messages(store_id):
                 'from': {'emailAddress': {'name': str(item.SenderName or ''), 'address': address}},
                 'bodyPreview': str(item.Body or '')[:4000],
                 'receivedDateTime': utc(item.ReceivedTime).isoformat(),
+                'hasAttachments': has_file_attachments(item),
                 'importance': {0: 'low', 1: 'normal', 2: 'high'}.get(item.Importance, 'normal'),
                 '@odata.type': '#microsoft.graph.eventMessageRequest' if item.Class == 53 else '#microsoft.graph.message',
             })

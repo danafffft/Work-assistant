@@ -28,6 +28,14 @@ class Rules(unittest.TestCase):
                 m['from']['emailAddress']['name'] = name
                 self.assertEqual(app.classify(m)['category'], 'Від людей')
 
+    def test_reports_override_sender_and_subject_categories(self):
+        for sender, subject in [('person@example.com', 'Документ'), ('jira@example.com', 'Jira export'), ('dell@example.com', 'Alert from ManageEngine')]:
+            with self.subTest(sender=sender):
+                self.assertEqual(app.classify(self.message(sender, subject, hasAttachments=True))['category'], 'Звіти')
+
+    def test_report_subject_without_file_is_not_report(self):
+        self.assertNotEqual(app.classify(self.message(subject='Щотижневий звіт', hasAttachments=False))['category'], 'Звіти')
+
     def test_categories(self):
         for address, subject, category in [('jira@example.com','Оновлено','Jira'),('noreply@example.com','Confluence update','Confluence'),('noreply@example.com','Навчання Python','Навчання'),('noreply@example.com','Звіт','Автоматичні повідомлення')]:
             with self.subTest(category=category): self.assertEqual(app.classify(self.message(address,subject))['category'],category)

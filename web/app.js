@@ -5,7 +5,7 @@ let messages=[
 {id:'demo2',subject:'Jira · WA-42: завдання готове до перевірки',from:{emailAddress:{name:'Jira',address:'jira@example.com'}},bodyPreview:'Оновлено статус завдання вашої команди.',category:'Jira',priority:'normal'},
 {id:'demo3',subject:'Confluence · Оновлення бази знань',from:{emailAddress:{name:'Confluence',address:'confluence@example.com'}},category:'Confluence',priority:'normal'},
 {id:'demo4',subject:'Навчання: робота з пріоритетами',from:{emailAddress:{name:'Learning',address:'learn@example.com'}},category:'Навчання',priority:'normal'},
-{id:'demo5',subject:'Ваш щотижневий звіт',from:{emailAddress:{name:'Сповіщення',address:'noreply@example.com'}},category:'Автоматичні повідомлення',priority:'low'},
+{id:'demo5',subject:'Ваш щотижневий звіт · report.xlsx',from:{emailAddress:{name:'Сповіщення',address:'noreply@example.com'}},category:'Звіти',priority:'normal',hasAttachments:true},
 {id:'demo6',subject:'Запрошення: планування спринту',from:{emailAddress:{name:'Андрій',address:'andriy@example.com'}},category:'Від людей',priority:'normal',meeting:true,meetingStatus:'Демо: календар не перевірявся'}];
 const labels={high:'Високий',normal:'Звичайний',low:'Низький'};
 function element(tag,cls,text){const e=document.createElement(tag);if(cls)e.className=cls;if(text)e.textContent=text;return e;}

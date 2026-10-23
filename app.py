@@ -9,7 +9,7 @@ TENANT = os.getenv('MICROSOFT_TENANT_ID', 'common')
 REDIRECT = os.getenv('MICROSOFT_REDIRECT_URI', 'http://localhost:8000/auth/callback')
 SCOPES = 'User.Read Mail.ReadWrite Calendars.ReadWrite'
 SESSIONS, PENDING = {}, {}
-CATEGORIES = ['Від людей', 'Навчання', 'Автоматичні повідомлення', 'Jira', 'Confluence']
+CATEGORIES = ['Звіти', 'Від людей', 'Навчання', 'Автоматичні повідомлення', 'Jira', 'Confluence']
 
 
 def has_person_name(name):
@@ -44,7 +44,8 @@ def classify(m):
         or bool(re.match(r'^(alert(?:s)?(?: from|:|\s*-)|automatic notification|автоматичне повідомлення)', subject))
     )
     category = 'Автоматичні повідомлення'
-    if 'jira' in text: category = 'Jira'
+    if m.get('hasAttachments') is True: category = 'Звіти'
+    elif 'jira' in text: category = 'Jira'
     elif 'confluence' in text: category = 'Confluence'
     elif automated: category = 'Автоматичні повідомлення'
     elif any(w in text for w in ('навчання', 'вебінар', 'курс', 'training', 'webinar', 'course', 'learning')): category = 'Навчання'
