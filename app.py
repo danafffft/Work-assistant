@@ -1,0 +1,202 @@
+import json, os, secrets, time, urllib.parse, urllib.request, urllib.error, base64, hashlib
+from pathlib import Path
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.cookies import SimpleCookie
+
+ROOT = Path(__file__).parent
+CLIENT = os.getenv('MICROSOFT_CLIENT_ID', '')
+TENANT = os.getenv('MICROSOFT_TENANT_ID', 'common')
+REDIRECT = os.getenv('MICROSOFT_REDIRECT_URI', 'http://localhost:8000/auth/callback')
+SCOPES = 'User.Read Mail.ReadWrite Calendars.ReadWrite'
+SESSIONS, PENDING = {}, {}
+CATEGORIES = ['Від людей', 'Навчання', 'Автоматичні повідомлення', 'Jira', 'Confluence']
+
+
+def classify(m):
+    address = m.get('from', {}).get('emailAddress', {}).get('address', '').lower()
+    subject = m.get('subject', '').lower()
+    text = address + ' ' + subject
+    category = 'Від людей'
+    if 'jira' in text: category = 'Jira'
+    elif 'confluence' in text: category = 'Confluence'
+    elif any(w in text for w in ('навчання', 'вебінар', 'курс', 'training', 'webinar', 'course', 'learning')): category = 'Навчання'
+    elif any(w in address for w in ('noreply', 'no-reply', 'notification', 'newsletter', 'donotreply')): category = 'Автоматичні повідомлення'
+    urgent = m.get('importance') == 'high' or any(w in subject for w in ('терміново', 'urgent', 'критич', 'blocker', 'asap'))
+    return {**m, 'category': category, 'priority': 'high' if urgent else 'low' if category == 'Автоматичні повідомлення' else 'normal', 'meeting': m.get('@odata.type', '').endswith('eventMessageRequest')}
+
+
+def request(url, data=None, token=None, method=None, form=False):
+    headers = {'Accept': 'application/json'}
+    if token:
+        headers['Authorization'] = 'Bearer ' + token
+        headers['Prefer'] = 'outlook.timezone="UTC"'
+    if data is not None:
+        headers['Content-Type'] = 'application/x-www-form-urlencoded' if form else 'application/json'
+        data = (urllib.parse.urlencode(data) if form else json.dumps(data)).encode()
+    with urllib.request.urlopen(urllib.request.Request(url, data=data, headers=headers, method=method), timeout=30) as r:
+        raw = r.read()
+        return json.loads(raw) if raw else {}
+
+
+def graph(s, path, data=None, method=None):
+    if s['expires'] < time.time(): raise ValueError('Session expired')
+    return request('https://graph.microsoft.com/v1.0' + path, data, s['token'], method)
+
+
+def can_accept(event, schedule):
+    # Recurrences and all-day invitations need manual review. Fail closed on incomplete schedules.
+    if event.get('recurrence') or event.get('isAllDay') or event.get('isCancelled'): return False
+    slots = schedule.get('value', [])
+    if len(slots) != 1 or slots[0].get('error') or 'scheduleItems' not in slots[0]: return False
+    return all(item.get('status') == 'free' for item in slots[0]['scheduleItems'])
+
+
+def auto_accept(s, m):
+    path = '/me/messages/' + urllib.parse.quote(m['id'], safe='')
+    try:
+        event = graph(s, path + '/microsoft.graph.eventMessageRequest/event')
+        if event.get('responseStatus', {}).get('response') in ('accepted', 'organizer'):
+            return 'Вже прийнято'
+        if event.get('recurrence') or event.get('isAllDay') or event.get('isCancelled'):
+            return 'Потрібен ручний перегляд'
+        start, end = event['start'], event['end']
+        if not start.get('dateTime') or not end.get('dateTime'): return 'Час невідомий'
+        # Past invitations are never accepted automatically.
+        from datetime import datetime, timezone
+        # getSchedule understands the original Graph timezone, unlike naive local parsing.
+        if start.get('timeZone') != 'UTC': return 'Часовий пояс потребує ручної перевірки'
+        if datetime.fromisoformat(start['dateTime'].rstrip('Z')).replace(tzinfo=timezone.utc) <= datetime.now(timezone.utc):
+            return 'Минула зустріч — ручний перегляд'
+        profile = graph(s, '/me?$select=mail,userPrincipalName')
+        address = profile.get('mail') or profile['userPrincipalName']
+        schedule = graph(s, '/me/calendar/getSchedule', {'schedules': [address], 'startTime': start, 'endTime': end, 'availabilityViewInterval': 5}, 'POST')
+        # Existing matching event may itself mark the slot tentative: conservatively leave for manual review.
+        if not can_accept(event, schedule): return 'Конфлікт або час недоступний — ручний перегляд'
+        graph(s, path + '/accept', {'comment': '', 'sendResponse': True}, 'POST')
+        return 'Автоматично прийнято'
+    except (ValueError, KeyError, urllib.error.URLError):
+        return 'Не вдалося перевірити календар — ручний перегляд'
+
+
+class Handler(BaseHTTPRequestHandler):
+    def allowed_request(self):
+        host = self.headers.get('Host', '')
+        if host not in (f'127.0.0.1:{self.server.server_port}', f'localhost:{self.server.server_port}'):
+            self.send({'error': 'Недозволена адреса запиту.'}, 403)
+            return False
+        origin = self.headers.get('Origin')
+        if origin and origin != 'http://' + host:
+            self.send({'error': 'Недозволене джерело запиту.'}, 403)
+            return False
+        return True
+
+    def log_message(self, *_): pass
+    def send(self, body, status=200, mime='application/json', headers=None):
+        raw = json.dumps(body, ensure_ascii=False).encode() if mime == 'application/json' else body
+        self.send_response(status)
+        for k, v in {'Content-Type': mime + '; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer', 'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self'; frame-ancestors 'none'; base-uri 'none'", **(headers or {})}.items(): self.send_header(k, v)
+        self.end_headers(); self.wfile.write(raw)
+    def cookie(self, name):
+        c = SimpleCookie(); c.load(self.headers.get('Cookie', ''))
+        return c[name].value if name in c else ''
+    def session(self): return SESSIONS.get(self.cookie('session'))
+    def do_GET(self):
+        if not self.allowed_request(): return
+        try: self.get()
+        except Exception: self.send({'error': 'Помилка Microsoft. Перевірте налаштування та дозволи, повторіть вхід.'}, 502)
+    def get(self):
+        url = urllib.parse.urlsplit(self.path)
+        if url.path == '/auth/login':
+            if not CLIENT: return self.send({'error': 'Задайте MICROSOFT_CLIENT_ID згідно README.'}, 400)
+            state, verifier = secrets.token_urlsafe(32), secrets.token_urlsafe(48)
+            PENDING[state] = (verifier, time.time() + 600)
+            challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).decode().rstrip('=')
+            q = urllib.parse.urlencode(dict(client_id=CLIENT, response_type='code', redirect_uri=REDIRECT, scope=SCOPES, state=state, code_challenge=challenge, code_challenge_method='S256'))
+            return self.send(b'', 302, 'text/plain', {'Location': f'https://login.microsoftonline.com/{TENANT}/oauth2/v2.0/authorize?{q}', 'Set-Cookie': f'oauth_state={state}; HttpOnly; SameSite=Lax; Path=/; Max-Age=600'})
+        if url.path == '/auth/callback':
+            q = urllib.parse.parse_qs(url.query); state = q.get('state', [''])[0]
+            p = PENDING.pop(state, None)
+            if not p or p[1] < time.time() or not secrets.compare_digest(self.cookie('oauth_state'), state) or 'code' not in q: return self.send({'error': 'Вхід скасовано або прострочено.'}, 400)
+            data = dict(client_id=CLIENT, code=q['code'][0], grant_type='authorization_code', redirect_uri=REDIRECT, code_verifier=p[0], scope=SCOPES)
+            if os.getenv('MICROSOFT_CLIENT_SECRET'): data['client_secret'] = os.environ['MICROSOFT_CLIENT_SECRET']
+            tokens = request(f'https://login.microsoftonline.com/{TENANT}/oauth2/v2.0/token', data, form=True)
+            sid = secrets.token_urlsafe(32)
+            SESSIONS[sid] = dict(token=tokens['access_token'], expires=time.time()+tokens['expires_in'], csrf=secrets.token_urlsafe(32), messages={})
+            return self.send(b'', 302, 'text/plain', {'Location': '/', 'Set-Cookie': f'session={sid}; HttpOnly; SameSite=Strict; Path=/' + ('; Secure' if REDIRECT.startswith('https:') else '')})
+        if url.path == '/api/status':
+            s = self.session(); connected = bool(s and s['expires'] > time.time())
+            return self.send(dict(connected=connected, configured=bool(CLIENT), desktop=os.name == 'nt', mode=s.get('mode', 'graph') if connected else None, csrf=s['csrf'] if connected else None))
+        if url.path == '/api/messages':
+            s = self.session()
+            if not s or s['expires'] < time.time(): return self.send({'error': 'Підключіть Outlook повторно.'}, 401)
+            if s.get('mode') == 'desktop':
+                import desktop_outlook
+                raw, limited = desktop_outlook.messages(s['store'])
+                messages = [classify(m) for m in raw]
+                s['messages'] = {m['id']: m for m in messages}
+                return self.send({'messages': messages, 'limited': limited})
+            result = graph(s, '/me/mailFolders/inbox/messages?$top=100&$orderby=receivedDateTime%20desc')
+            messages = [classify(m) for m in result['value']]
+            s['messages'] = {m['id']: m for m in messages}
+            return self.send({'messages': messages, 'limited': bool(result.get('@odata.nextLink'))})
+        files = {'/': ('index.html','text/html'), '/app.js': ('app.js','text/javascript'), '/style.css': ('style.css','text/css')}
+        if url.path in files:
+            name, mime = files[url.path]; return self.send((ROOT/'web'/name).read_bytes(), mime=mime)
+        self.send({'error': 'Не знайдено'}, 404)
+    def do_POST(self):
+        if not self.allowed_request(): return
+        if self.path == '/api/connect':
+            # Same-origin browser requests only; no ambient Outlook access from other sites.
+            if self.headers.get('Origin') != 'http://' + self.headers.get('Host', ''):
+                return self.send({'error': 'Підключення доступне лише з вікна застосунку.'}, 403)
+            if os.name != 'nt':
+                return self.send({'error': 'Для цього підключення потрібні Windows та класичний Outlook.'}, 400)
+            try:
+                import desktop_outlook
+                store = desktop_outlook.connect()
+                sid = secrets.token_urlsafe(32)
+                SESSIONS[sid] = dict(mode='desktop', store=store, expires=time.time()+86400, csrf=secrets.token_urlsafe(32), messages={})
+                return self.send({'ok': True}, headers={'Set-Cookie': f'session={sid}; HttpOnly; SameSite=Strict; Path=/'})
+            except Exception:
+                return self.send({'error': 'Не вдалося підключити класичний Outlook. Відкрийте його, перевірте профіль і дозволи організації.'}, 503)
+        s = self.session()
+        if not s or s['expires'] < time.time() or not secrets.compare_digest(self.headers.get('X-CSRF-Token', ''), s['csrf']): return self.send({'error': 'Потрібен чинний сеанс.'}, 403)
+        try:
+            size = int(self.headers.get('Content-Length', '0'))
+            if not 0 <= size <= 8192: return self.send({'error': 'Запит завеликий'}, 413)
+            body = json.loads(self.rfile.read(size) or b'{}')
+            if self.path == '/api/logout':
+                SESSIONS.pop(self.cookie('session'), None); return self.send({'ok': True})
+            if self.path == '/api/meetings':
+                results = {}
+                for m in list(s['messages'].values()):
+                    if not m['meeting']: continue
+                    if s.get('mode') == 'desktop':
+                        import desktop_outlook
+                        try: results[m['id']] = desktop_outlook.accept_if_free(s['store'], m['id'])
+                        except Exception: results[m['id']] = 'Помилка Outlook — ручний перегляд'
+                    else: results[m['id']] = auto_accept(s, m)
+                return self.send({'results': results})
+            m = s['messages'].get(body.get('id'))
+            if not m: return self.send({'error': 'Оновіть список листів.'}, 400)
+            path = '/me/messages/' + urllib.parse.quote(m['id'], safe='')
+            if s.get('mode') == 'desktop':
+                import desktop_outlook
+                try:
+                    if self.path == '/api/categorize': desktop_outlook.categorize(s['store'], m, CATEGORIES)
+                    elif self.path == '/api/open': desktop_outlook.open_message(s['store'], m['id'])
+                    else: return self.send({'error': 'Невідома дія'}, 400)
+                except Exception:
+                    return self.send({'error': 'Outlook не виконав дію. Перевірте доступ і оновіть пошту.'}, 502)
+                return self.send({'ok': True})
+            if self.path == '/api/categorize':
+                current = graph(s, path + '?$select=categories')
+                categories = [c for c in current.get('categories', []) if c not in CATEGORIES]
+                graph(s, path, {'categories': categories + [m['category']], 'importance': m['priority']}, 'PATCH')
+            else: return self.send({'error': 'Невідома дія'}, 400)
+            self.send({'ok': True})
+        except (ValueError, KeyError, TypeError, urllib.error.URLError): self.send({'error': 'Дію не виконано. Перевірте дозволи Microsoft та оновіть пошту.'}, 502)
+
+if __name__ == '__main__':
+    print('Work assistant: http://localhost:8000', flush=True)
+    ThreadingHTTPServer(('127.0.0.1', 8000), Handler).serve_forever()
