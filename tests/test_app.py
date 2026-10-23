@@ -4,8 +4,30 @@ import app
 
 class Rules(unittest.TestCase):
     def message(self, sender='person@example.com', subject='Привіт', **extra):
-        return {'from': {'emailAddress': {'address': sender}}, 'subject': subject, **extra}
+        return {'from': {'emailAddress': {'address': sender, 'name': 'Олена Коваль'}}, 'subject': subject, **extra}
     def test_people(self): self.assertEqual(app.classify(self.message())['category'], 'Від людей')
+    def test_manageengine_is_automatic(self):
+        m = self.message('dell@universalna.onmicrosoft.com', 'Alert from ManageEngine OpUtils Rogue Detection tool')
+        m['from']['emailAddress']['name'] = 'dell'
+        self.assertEqual(app.classify(m)['category'], 'Автоматичні повідомлення')
+
+    def test_automation_overrides_person_name(self):
+        self.assertEqual(app.classify(self.message(subject='Alert from ManageEngine OpUtils Rogue Detection tool'))['category'], 'Автоматичні повідомлення')
+
+    def test_unclear_names_are_not_people(self):
+        for name in ('', 'dell', 'Olena', 'IT Support', 'Security Team', 'Олена123 Коваль', 'olena@example.com'):
+            with self.subTest(name=name):
+                m = self.message()
+                m['from']['emailAddress']['name'] = name
+                self.assertEqual(app.classify(m)['category'], 'Автоматичні повідомлення')
+
+    def test_person_names(self):
+        for name in ('Олена Коваль', 'John Smith', 'Анна-Марія Петренко', "Mary O’Connor"):
+            with self.subTest(name=name):
+                m = self.message()
+                m['from']['emailAddress']['name'] = name
+                self.assertEqual(app.classify(m)['category'], 'Від людей')
+
     def test_categories(self):
         for address, subject, category in [('jira@example.com','Оновлено','Jira'),('noreply@example.com','Confluence update','Confluence'),('noreply@example.com','Навчання Python','Навчання'),('noreply@example.com','Звіт','Автоматичні повідомлення')]:
             with self.subTest(category=category): self.assertEqual(app.classify(self.message(address,subject))['category'],category)

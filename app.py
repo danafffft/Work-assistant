@@ -1,4 +1,4 @@
-import json, os, secrets, time, urllib.parse, urllib.request, urllib.error, base64, hashlib
+import json, os, secrets, time, urllib.parse, urllib.request, urllib.error, base64, hashlib, re
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from http.cookies import SimpleCookie
@@ -12,15 +12,44 @@ SESSIONS, PENDING = {}, {}
 CATEGORIES = ['Від людей', 'Навчання', 'Автоматичні повідомлення', 'Jira', 'Confluence']
 
 
+def has_person_name(name):
+    """Conservative name shape, not proof of a human identity."""
+    words = name.strip().split()
+    if not 2 <= len(words) <= 4:
+        return False
+    system_words = {
+        'dell', 'manageengine', 'oputils', 'rogue', 'detection', 'tool',
+        'alert', 'alerts', 'system', 'service', 'support', 'team', 'admin',
+        'administrator', 'notification', 'notifications', 'microsoft',
+        'office', 'helpdesk', 'monitoring', 'security', 'company', 'newsletter',
+        'jira', 'confluence', 'система', 'підтримка', 'команда', 'служба',
+    }
+    for word in words:
+        if word.casefold() in system_words:
+            return False
+        parts = re.split("[-’']", word)
+        if not all(part.isalpha() and part[0].isupper() and (len(part) == 1 or not part.isupper()) for part in parts):
+            return False
+    return True
+
+
 def classify(m):
-    address = m.get('from', {}).get('emailAddress', {}).get('address', '').lower()
+    sender = m.get('from', {}).get('emailAddress', {})
+    address = sender.get('address', '').lower()
+    name = sender.get('name', '')
     subject = m.get('subject', '').lower()
     text = address + ' ' + subject
-    category = 'Від людей'
+    automated = (
+        any(w in (name + ' ' + subject).casefold() for w in ('manageengine', 'oputils', 'rogue detection'))
+        or bool(re.match(r'^(alert(?:s)?(?: from|:|\s*-)|automatic notification|автоматичне повідомлення)', subject))
+    )
+    category = 'Автоматичні повідомлення'
     if 'jira' in text: category = 'Jira'
     elif 'confluence' in text: category = 'Confluence'
+    elif automated: category = 'Автоматичні повідомлення'
     elif any(w in text for w in ('навчання', 'вебінар', 'курс', 'training', 'webinar', 'course', 'learning')): category = 'Навчання'
     elif any(w in address for w in ('noreply', 'no-reply', 'notification', 'newsletter', 'donotreply')): category = 'Автоматичні повідомлення'
+    elif has_person_name(name): category = 'Від людей'
     urgent = m.get('importance') == 'high' or any(w in subject for w in ('терміново', 'urgent', 'критич', 'blocker', 'asap'))
     return {**m, 'category': category, 'priority': 'high' if urgent else 'low' if category == 'Автоматичні повідомлення' else 'normal', 'meeting': m.get('@odata.type', '').endswith('eventMessageRequest')}
 
