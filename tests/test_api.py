@@ -44,3 +44,24 @@ class ApiTests(unittest.TestCase):
         with self.assertRaises(urllib.error.HTTPError) as error:
             self.request('/api/jira-settings',{'url':'https://user:password@jira.example.com','token':'test-only'})
         self.assertEqual(error.exception.code,400)
+
+    def test_profile_persists_preferences_without_token(self):
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as directory, patch('local_profile.path',return_value=Path(directory)/'profile.json'):
+            result=self.request('/api/profile',{'email':'person@example.com','url':'https://example.atlassian.net','token':'secret-test-only'})
+            saved=(Path(directory)/'profile.json').read_text()
+            self.assertNotIn('secret-test-only', saved)
+            self.assertEqual(json.loads(saved),{'email':'person@example.com','url':'https://example.atlassian.net'})
+            self.assertTrue(result['jiraConnected'])
+            self.assertNotIn('secret-test-only',json.dumps(result))
+            self.assertEqual(self.request('/api/status')['profile']['email'],'person@example.com')
+
+    def test_identity_change_drops_previous_token(self):
+        import tempfile
+        from pathlib import Path
+        app.SESSIONS['test-session']['jira']={'email':'old@example.com','url':'https://example.atlassian.net','token':'old-test-token'}
+        with tempfile.TemporaryDirectory() as directory, patch('local_profile.path',return_value=Path(directory)/'profile.json'):
+            result=self.request('/api/profile',{'email':'new@example.com','url':'https://example.atlassian.net'})
+            self.assertFalse(result['jiraConnected'])
+            self.assertFalse(app.SESSIONS['test-session']['jira']['token'])

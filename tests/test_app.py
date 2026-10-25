@@ -7,7 +7,7 @@ class Rules(unittest.TestCase):
         return {'from': {'emailAddress': {'address': sender, 'name': 'Олена Коваль'}}, 'subject': subject, **extra}
     def test_people(self): self.assertEqual(app.classify(self.message())['category'], 'Від людей')
     def test_manageengine_is_automatic(self):
-        m = self.message('dell@universalna.onmicrosoft.com', 'Alert from ManageEngine OpUtils Rogue Detection tool')
+        m = self.message('dell@example.onmicrosoft.com', 'Alert from ManageEngine OpUtils Rogue Detection tool')
         m['from']['emailAddress']['name'] = 'dell'
         self.assertEqual(app.classify(m)['category'], 'Автоматичні повідомлення')
 

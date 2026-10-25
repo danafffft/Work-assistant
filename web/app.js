@@ -25,14 +25,14 @@ $('#save').onclick=()=>run(async()=>{if(!connected)throw Error('Спочатку
 $('#logout').onclick=()=>run(async()=>{await api('/api/logout',{});location.reload();});
 for(const selector of ['#category','#priority','#search'])$(selector).addEventListener('input',render);
 function showDetail(m){selectedId=m.id;const target=$('#detail');target.replaceChildren(element('span','eyebrow','ПЕРЕГЛЯД ЛИСТА'),element('h2','',m.subject||'(без теми)'),element('p','',`${m.from?.emailAddress?.name||''} · ${m.from?.emailAddress?.address||''}`),element('span','tag '+m.priority,labels[m.priority]),element('span','tag',m.category),element('div','body',m.bodyPreview||'Текст відсутній. Відкрийте оригінал в Outlook.'));if(m.meeting)target.append(element('p','',m.meetingStatus||'Запрошення на нараду'));if(connected&&desktop){const b=element('button','','Відкрити оригінал в Outlook ↗');b.onclick=()=>run(()=>api('/api/open',{id:m.id}));target.append(b);}else if(m.webLink){try{const u=new URL(m.webLink);if(u.protocol==='https:'){const a=element('a','','Відкрити в Outlook ↗');a.href=u.href;a.target='_blank';a.rel='noopener noreferrer';target.append(a);}}catch{}}document.querySelectorAll('#messages .card').forEach((c,i)=>c.classList.toggle('selected',c.querySelector('.subject')?.textContent===(m.subject||'(без теми)')));}
-function showMail(){ $('#plan-panel').hidden=true;$('.columns').hidden=false;$('.filters').hidden=false; }
+function showMail(){ $('#profile-panel').hidden=true; $('#plan-panel').hidden=true;$('.columns').hidden=false;$('.filters').hidden=false; }
 function chooseCategory(value){showMail();meetingsOnly=false;$('#category').value=value;$('#view-title').firstChild.textContent=(value||'Усі вхідні')+' ';document.querySelectorAll('.nav-item').forEach(b=>b.classList.toggle('active',b.dataset.category===value));render();}
 document.querySelectorAll('[data-category]').forEach(b=>b.onclick=()=>chooseCategory(b.dataset.category));
 $('#meetings-nav').onclick=()=>{showMail();meetingsOnly=true;$('#category').value='';$('#view-title').firstChild.textContent='Наради ';document.querySelectorAll('.nav-item').forEach(b=>b.classList.toggle('active',b.id==='meetings-nav'));render();};
 $('#category').addEventListener('change',()=>chooseCategory($('#category').value));
 $('#connect').onclick=()=>run(async()=>{await api('/api/connect',{});location.reload();});
 $('#today').textContent=new Date().toLocaleDateString('uk-UA',{weekday:'long',day:'numeric',month:'long'});
-render();run(async()=>{const s=await api('/api/status');connected=s.connected;csrf=s.csrf;desktop=s.desktop;$('#connect').hidden=connected;if(connected){$('#connection').textContent='Outlook підключено';$('#logout').hidden=false;await refresh();}else $('#notice').textContent=desktop?'Натисніть «Підключити Outlook», щоб використати ваш поточний профіль.':'Демо-режим. Для вашої пошти запустіть Windows-застосунок із класичним Outlook.';});
+render();run(async()=>{const s=await api('/api/status');connected=s.connected;csrf=s.csrf;desktop=s.desktop;$('#jira-email').value=s.profile?.email||'';$('#jira-url').value=s.profile?.url||'';$('#connect').hidden=connected;if(connected){$('#connection').textContent='Outlook підключено';$('#logout').hidden=false;await refresh();}else $('#notice').textContent=desktop?'Натисніть «Підключити Outlook», щоб використати ваш поточний профіль.':'Демо-режим. Для вашої пошти запустіть Windows-застосунок із класичним Outlook.';});
 
 function renderPlan(){
   const sources=$('#plan-sources'), blocks=$('#plan-blocks'), backlog=$('#plan-backlog');
@@ -44,8 +44,9 @@ function renderPlan(){
   backlog.replaceChildren(...planData.backlog.map(t=>element('p','','Не вмістилося: '+t.title+' · '+t.remainingMinutes+' хв')));
 }
 async function refreshPlan(){try{planData=await api('/api/plan');renderPlan();}catch(e){planData=null;renderPlan();$('#plan-sources').replaceChildren(element('p','', 'Графік недоступний: '+e.message));}}
-$('#plan-nav').onclick=()=>{$('.columns').hidden=true;$('.filters').hidden=true;$('#plan-panel').hidden=false;document.querySelectorAll('.nav-item').forEach(b=>b.classList.toggle('active',b.id==='plan-nav'));renderPlan();};
+$('#plan-nav').onclick=()=>{$('#profile-panel').hidden=true;$('.columns').hidden=true;$('.filters').hidden=true;$('#plan-panel').hidden=false;document.querySelectorAll('.nav-item').forEach(b=>b.classList.toggle('active',b.id==='plan-nav'));renderPlan();};
 $('#auto-toggle').onclick=()=>{autoUpdate=!autoUpdate;$('#auto-toggle').textContent=autoUpdate?'Авто: 30 с':'Авто: пауза';$('#auto-toggle').setAttribute('aria-pressed',String(autoUpdate));};
 setInterval(()=>{if(connected&&autoUpdate&&!busy)run(refresh);},30000);
 
-$('#jira-form').onsubmit=event=>{event.preventDefault();run(async()=>{if(!connected)throw Error('Спочатку підключіть Outlook.');try{await api('/api/jira-settings',{url:$('#jira-url').value,email:$('#jira-email').value,token:$('#jira-token').value});}finally{$('#jira-token').value='';}await refreshPlan();});};
+$('#profile-nav').onclick=()=>{$('.columns').hidden=true;$('.filters').hidden=true;$('#plan-panel').hidden=true;$('#profile-panel').hidden=false;document.querySelectorAll('.nav-item').forEach(b=>b.classList.toggle('active',b.id==='profile-nav'));};
+$('#jira-form').onsubmit=event=>{event.preventDefault();run(async()=>{let result;try{result=await api('/api/profile',{url:$('#jira-url').value,email:$('#jira-email').value,token:$('#jira-token').value});}finally{$('#jira-token').value='';}$('#profile-result').textContent='Профіль збережено на цьому комп’ютері. '+(result.jiraConnected?'Токен Jira додано.':'Для задач Jira додайте API-токен.');if(connected)await refreshPlan();});};

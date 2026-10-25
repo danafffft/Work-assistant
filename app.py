@@ -159,11 +159,21 @@ class Handler(BaseHTTPRequestHandler):
             SESSIONS[sid] = dict(token=tokens['access_token'], expires=time.time()+tokens['expires_in'], csrf=secrets.token_urlsafe(32), messages={})
             return self.send(b'', 302, 'text/plain', {'Location': '/', 'Set-Cookie': f'session={sid}; HttpOnly; SameSite=Strict; Path=/' + ('; Secure' if REDIRECT.startswith('https:') else '')})
         if url.path == '/api/status':
-            s = self.session(); connected = bool(s and s['expires'] > time.time())
-            return self.send(dict(connected=connected, configured=bool(CLIENT), desktop=os.name == 'nt', mode=s.get('mode', 'graph') if connected else None, csrf=s['csrf'] if connected else None))
+            import local_profile
+            s = self.session()
+            cookie_headers = {}
+            if not s or s['expires'] < time.time():
+                sid = secrets.token_urlsafe(32)
+                s = dict(mode='profile', expires=time.time()+86400, csrf=secrets.token_urlsafe(32), messages={})
+                SESSIONS[sid] = s
+                cookie_headers['Set-Cookie'] = f'session={sid}; HttpOnly; SameSite=Strict; Path=/'
+            profile = local_profile.load()
+            if 'jira' not in s: s['jira'] = profile
+            connected = s.get('mode') != 'profile'
+            return self.send(dict(connected=connected, configured=bool(CLIENT), desktop=os.name == 'nt', mode=s.get('mode', 'graph'), csrf=s['csrf'], profile=profile, jiraConnected=bool(s.get('jira', {}).get('token'))), headers=cookie_headers)
         if url.path == '/api/messages':
             s = self.session()
-            if not s or s['expires'] < time.time(): return self.send({'error': 'Підключіть Outlook повторно.'}, 401)
+            if not s or s['expires'] < time.time() or s.get('mode') == 'profile': return self.send({'error': 'Підключіть Outlook повторно.'}, 401)
             if s.get('mode') == 'desktop':
                 import desktop_outlook
                 raw, limited = desktop_outlook.messages(s['store'])
@@ -176,7 +186,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.send({'messages': messages, 'limited': bool(result.get('@odata.nextLink'))})
         if url.path == '/api/plan':
             session = self.session()
-            if not session or session['expires'] < time.time(): return self.send({'error': 'Підключіть Outlook.'}, 401)
+            if not session or session['expires'] < time.time() or session.get('mode') == 'profile': return self.send({'error': 'Підключіть Outlook.'}, 401)
             from datetime import datetime, timezone, timedelta
             from integrations import jira_tasks
             from planning import build_plan
@@ -215,7 +225,10 @@ class Handler(BaseHTTPRequestHandler):
                 import desktop_outlook
                 store = desktop_outlook.connect()
                 sid = secrets.token_urlsafe(32)
-                SESSIONS[sid] = dict(mode='desktop', store=store, expires=time.time()+86400, csrf=secrets.token_urlsafe(32), messages={})
+                previous = self.session()
+                jira_settings = dict(previous.get('jira', {})) if previous else {}
+                SESSIONS.pop(self.cookie('session'), None)
+                SESSIONS[sid] = dict(mode='desktop', jira=jira_settings, store=store, expires=time.time()+86400, csrf=secrets.token_urlsafe(32), messages={})
                 return self.send({'ok': True}, headers={'Set-Cookie': f'session={sid}; HttpOnly; SameSite=Strict; Path=/'})
             except Exception:
                 return self.send({'error': 'Не вдалося підключити класичний Outlook. Відкрийте його, перевірте профіль і дозволи організації.'}, 503)
@@ -225,6 +238,17 @@ class Handler(BaseHTTPRequestHandler):
             size = int(self.headers.get('Content-Length', '0'))
             if not 0 <= size <= 8192: return self.send({'error': 'Запит завеликий'}, 413)
             body = json.loads(self.rfile.read(size) or b'{}')
+            if self.path == '/api/profile':
+                import local_profile
+                try: profile = local_profile.validate(body)
+                except ValueError: return self.send({'error': 'Перевірте email і HTTPS-адресу Jira.'}, 400)
+                try: local_profile.save(profile)
+                except OSError: return self.send({'error': 'Не вдалося зберегти локальний профіль.'}, 500)
+                previous = s.get('jira', {})
+                same_identity = previous.get('url') == profile['url'] and previous.get('email') == profile['email']
+                token = str(body.get('token', '')).strip() or (previous.get('token', '') if same_identity else '')
+                s['jira'] = {**profile, 'token': token}
+                return self.send({'ok': True, 'profile': profile, 'jiraConnected': bool(token)})
             if self.path == '/api/jira-settings':
                 jira_url = str(body.get('url', '')).strip().rstrip('/')
                 parsed = urllib.parse.urlsplit(jira_url)
