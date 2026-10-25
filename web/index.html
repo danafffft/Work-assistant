@@ -29,6 +29,9 @@
       <button class="nav-item" data-category="Jira та Confluence">
         ▧ <span>Jira та Confluence</span>
       </button>
+      <button class="nav-item" id="day-nav">
+        ☀ <span>Мій день і доручення</span>
+      </button>
       <div class="nav-label">КАЛЕНДАР</div>
       <button class="nav-item" id="plan-nav">
         ▦ <span>Робочий графік</span></button
@@ -87,6 +90,64 @@
             <option value="low">Низький</option>
           </select>
         </div>
+        <section id="hub-panel" hidden>
+          <h2>Мій день</h2>
+          <p>
+            Доручення та нагадування зберігаються локально. Статус «Виконано» не
+            змінює Jira.
+          </p>
+          <div id="day-summary"></div>
+          <h2>Нове доручення</h2>
+          <form id="task-form">
+            <input
+              id="task-title"
+              placeholder="Що потрібно зробити?"
+              maxlength="500"
+              required
+            /><label>До дати<input id="task-due" type="date" /></label
+            ><label
+              >Хвилин<input
+                id="task-minutes"
+                type="number"
+                min="15"
+                max="2400"
+                value="60" /></label
+            ><button>Додати</button>
+          </form>
+          <h2>Усі доручення</h2>
+          <select id="task-filter" aria-label="Статус доручень">
+            <option value="active">Активні</option>
+            <option value="candidate">На підтвердження</option>
+            <option value="done">Виконані</option>
+            <option value="dismissed">Відхилені</option>
+          </select>
+          <div id="hub-tasks"></div>
+          <h2>Закріпити задачу в графіку</h2>
+          <div id="pin-drop" tabindex="0">
+            Перетягніть сюди задачу або виберіть її нижче.
+          </div>
+          <form id="pin-form">
+            <select id="pin-task" aria-label="Задача"></select
+            ><input
+              id="pin-start"
+              type="datetime-local"
+              aria-label="Початок закріпленої задачі"
+              required
+            /><button>Перевірити час і закріпити</button>
+          </form>
+          <p>
+            Час вводиться у часовому поясі вашого комп’ютера; перевіряється за
+            робочим поясом профілю. Закріплені задачі не записуються в Outlook.
+          </p>
+          <h2>Правила відправників</h2>
+          <div id="hub-rules"></div>
+          <h2>Журнал локальних дій</h2>
+          <p>
+            Скасування доступне для доручень і правил. Надіслані відповіді на
+            наради тут не відкликаються.
+          </p>
+          <div id="hub-journal"></div>
+        </section>
         <section id="profile-panel" hidden>
           <h2>Ваш профіль і підключення</h2>
           <p>
@@ -204,6 +265,10 @@
             <button type="submit">Зберегти профіль</button>
           </form>
           <p id="profile-result" role="status"></p>
+          <h2>Про застосунок</h2>
+          <p>Work Assistant 1.0.0 · локальні дані на вашому комп’ютері.</p>
+          <button id="check-updates" type="button">Перевірити оновлення</button>
+          <p id="update-result" role="status"></p>
         </section>
         <section id="plan-panel" hidden>
           <div class="plan-heading">
@@ -250,5 +315,6 @@
       </main>
     </div>
     <script src="/app.js"></script>
+    <script src="/hub.js"></script>
   </body>
 </html>

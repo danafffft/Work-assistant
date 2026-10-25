@@ -16,3 +16,7 @@ profile.tmp
 .env.*
 !.env.example
 user-data/
+
+*.sqlite3
+*.sqlite3-*
+installer-output/

@@ -392,6 +392,35 @@ class Handler(BaseHTTPRequestHandler):
                 ),
                 headers=cookie_headers,
             )
+        if url.path == "/api/update":
+            try:
+                release = request(
+                    "https://api.github.com/repos/danafffft/Work-assistant/releases/latest",
+                    headers={"User-Agent": "WorkAssistant/1.0.0"},
+                )
+                return self.send(
+                    {
+                        "current": "1.0.0",
+                        "latest": release.get("tag_name"),
+                        "url": "https://github.com/danafffft/Work-assistant/releases/latest",
+                    }
+                )
+            except Exception:
+                return self.send(
+                    {
+                        "current": "1.0.0",
+                        "latest": None,
+                        "url": "https://github.com/danafffft/Work-assistant",
+                        "message": "Опублікований інсталятор не знайдено або GitHub недоступний. Оновлення з вихідного коду — на сторінці проєкту.",
+                    }
+                )
+        if url.path == "/api/workspace":
+            s = self.session()
+            if not s or s["expires"] < time.time():
+                return self.send({"error": "Повторіть вхід."}, 401)
+            import workhub
+
+            return self.send(workhub.read(s))
         if url.path == "/api/messages":
             s = self.session()
             if not s or s["expires"] < time.time() or s.get("mode") == "profile":
@@ -404,6 +433,9 @@ class Handler(BaseHTTPRequestHandler):
                     {**classify(m), **s.get("overrides", {}).get(m["id"], {})}
                     for m in raw
                 ]
+                import workspace_data
+
+                messages = workspace_data.apply_rules(messages)
                 s["messages"] = {m["id"]: m for m in messages}
                 return self.send({"messages": messages, "limited": limited})
             result = graph(
@@ -414,6 +446,9 @@ class Handler(BaseHTTPRequestHandler):
                 {**classify(m), **s.get("overrides", {}).get(m["id"], {})}
                 for m in result["value"]
             ]
+            import workspace_data
+
+            messages = workspace_data.apply_rules(messages)
             s["messages"] = {m["id"]: m for m in messages}
             return self.send(
                 {"messages": messages, "limited": bool(result.get("@odata.nextLink"))}
@@ -492,6 +527,22 @@ class Handler(BaseHTTPRequestHandler):
                 for task in tasks
                 if task["id"] not in session.get("dismissedTasks", set())
             ]
+            import workspace_data
+
+            all_tasks = workspace_data.ingest(tasks)
+            tasks = [
+                t
+                for t in all_tasks
+                if t.get("status") == "active"
+                and not t.get("pin")
+                and t.get("source") != "Лист · очікування"
+            ]
+            pinned = [
+                {**t, **t["pin"]}
+                for t in all_tasks
+                if t.get("pin") and t.get("status") == "active"
+            ]
+            events += [{**t, "busy": True, "pinnedTask": True} for t in pinned]
             preferences = local_profile.load()
             plan = build_plan(
                 tasks,
@@ -503,8 +554,10 @@ class Handler(BaseHTTPRequestHandler):
                 lunch_start=preferences["lunchStart"],
                 lunch_end=preferences["lunchEnd"],
             )
-            return self.send({**plan, "sources": statuses, "tasks": tasks})
+            session["lastPlan"] = plan
+            return self.send({**plan, "sources": statuses, "tasks": all_tasks})
         files = {
+            "/hub.js": ("hub.js", "text/javascript"),
             "/": ("index.html", "text/html"),
             "/app.js": ("app.js", "text/javascript"),
             "/style.css": ("style.css", "text/css"),
@@ -576,6 +629,13 @@ class Handler(BaseHTTPRequestHandler):
             body = json.loads(self.rfile.read(size) or b"{}")
             if not isinstance(body, dict):
                 return self.send({"error": "Неправильний формат запиту."}, 400)
+            if self.path == "/api/workspace":
+                import workhub
+
+                try:
+                    return self.send(workhub.action(s, body, CATEGORIES))
+                except (ValueError, KeyError, TypeError) as error:
+                    return self.send({"error": str(error)}, 400)
             if self.path == "/api/teams/start":
                 import teams_connection, local_profile
 
@@ -718,6 +778,13 @@ class Handler(BaseHTTPRequestHandler):
                             results[m["id"]] = "Помилка Outlook — ручний перегляд"
                     else:
                         results[m["id"]] = auto_accept(s, m)
+                import workspace_data
+
+                for message_id, outcome in results.items():
+                    if outcome == "Автоматично прийнято":
+                        workspace_data.record_external(
+                            s["messages"][message_id].get("subject", "Нарада"), outcome
+                        )
                 return self.send({"results": results})
             m = s["messages"].get(body.get("id"))
             if not m:
@@ -729,6 +796,11 @@ class Handler(BaseHTTPRequestHandler):
                 try:
                     if self.path == "/api/categorize":
                         desktop_outlook.categorize(s["store"], m, MANAGED_CATEGORIES)
+                        import workspace_data
+
+                        workspace_data.record_external(
+                            m.get("subject", "Лист"), "Категорії Outlook збережено"
+                        )
                     elif self.path == "/api/open":
                         desktop_outlook.open_message(s["store"], m["id"])
                     else:
@@ -756,6 +828,11 @@ class Handler(BaseHTTPRequestHandler):
                         "importance": m["priority"],
                     },
                     "PATCH",
+                )
+                import workspace_data
+
+                workspace_data.record_external(
+                    m.get("subject", "Лист"), "Категорії Outlook збережено"
                 )
             else:
                 return self.send({"error": "Невідома дія"}, 400)

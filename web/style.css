@@ -622,3 +622,46 @@ legend {
   display: block;
   margin-top: 10px;
 }
+#hub-panel {
+  max-width: 1100px;
+}
+#hub-panel h2 {
+  margin-top: 28px;
+}
+#hub-panel button {
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--paper);
+  color: var(--cherry);
+  margin: 6px;
+  font-size: 12px;
+}
+#hub-panel input,
+#hub-panel select {
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--paper);
+  max-width: 100%;
+}
+#task-form,
+#pin-form {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: end;
+}
+#task-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 12px;
+}
+#pin-drop {
+  border: 2px dashed var(--line);
+  border-radius: 8px;
+  padding: 20px;
+  margin: 15px 0;
+  color: var(--muted);
+}

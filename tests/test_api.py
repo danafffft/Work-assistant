@@ -11,6 +11,16 @@ import app
 
 class ApiTests(unittest.TestCase):
     def setUp(self):
+        import tempfile
+        from pathlib import Path
+
+        self.temp = tempfile.TemporaryDirectory()
+        self.profile_patch = patch(
+            "local_profile.path", return_value=Path(self.temp.name) / "profile.json"
+        )
+        self.profile_patch.start()
+        self.addCleanup(self.temp.cleanup)
+        self.addCleanup(self.profile_patch.stop)
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), app.Handler)
         self.base = "http://127.0.0.1:" + str(self.server.server_port)
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
@@ -52,7 +62,7 @@ class ApiTests(unittest.TestCase):
         with patch("desktop_outlook.calendar_events", return_value=[]), patch(
             "integrations.jira_tasks",
             return_value=(
-                [{"id": "J-1", "title": "Task", "minutes": 30}],
+                [{"id": "J-1", "title": "Task", "minutes": 30, "source": "Jira"}],
                 "Jira updated",
             ),
         ) as jira:
@@ -160,7 +170,7 @@ class ApiTests(unittest.TestCase):
         with patch("desktop_outlook.calendar_events", return_value=[]), patch(
             "integrations.jira_tasks",
             return_value=(
-                [{"id": "J-1", "title": "Task", "minutes": 30}],
+                [{"id": "J-1", "title": "Task", "minutes": 30, "source": "Jira"}],
                 "Jira updated",
             ),
         ) as jira:

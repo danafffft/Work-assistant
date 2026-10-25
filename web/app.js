@@ -326,7 +326,36 @@ function showDetail(m) {
         m.priority = priority.value;
         render();
       });
-    controls.append(category, priority, save);
+    const rule = element("button", "", "Завжди так для відправника");
+    rule.onclick = () =>
+      run(async () => {
+        await api("/api/workspace", {
+          action: "rule",
+          sender: m.from?.emailAddress?.address,
+          category: category.value,
+          priority: priority.value,
+        });
+        $("#notice").textContent =
+          "Правило збережено локально. Воно діятиме з наступного оновлення.";
+      });
+    for (const [label, source] of [
+      ["Потрібно відповісти", "Лист · відповісти"],
+      ["Чекаю відповіді", "Лист · очікування"],
+    ]) {
+      const b = element("button", "", label);
+      b.onclick = () =>
+        run(async () => {
+          await api("/api/workspace", {
+            action: "task",
+            title: m.subject || "Лист",
+            source,
+            minutes: 30,
+          });
+          $("#notice").textContent = "Доручення додано до «Мого дня».";
+        });
+      controls.append(b);
+    }
+    controls.append(category, priority, save, rule);
     target.append(controls);
   }
   if (m.meeting)
@@ -354,6 +383,7 @@ function showDetail(m) {
     );
 }
 function showMail() {
+  $("#hub-panel").hidden = true;
   $("#profile-panel").hidden = true;
   $("#plan-panel").hidden = true;
   $(".columns").hidden = false;
@@ -514,6 +544,7 @@ async function refreshPlan() {
   }
 }
 $("#plan-nav").onclick = () => {
+  $("#hub-panel").hidden = true;
   $("#profile-panel").hidden = true;
   $(".columns").hidden = true;
   $(".filters").hidden = true;
@@ -543,6 +574,7 @@ function scheduleRefresh() {
 scheduleRefresh();
 
 $("#profile-nav").onclick = () => {
+  $("#hub-panel").hidden = true;
   $(".columns").hidden = true;
   $(".filters").hidden = true;
   $("#plan-panel").hidden = true;
