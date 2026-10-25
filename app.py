@@ -429,26 +429,26 @@ class Handler(BaseHTTPRequestHandler):
                 import desktop_outlook
 
                 raw, limited = desktop_outlook.messages(s["store"])
-                messages = [
-                    {**classify(m), **s.get("overrides", {}).get(m["id"], {})}
-                    for m in raw
-                ]
+                messages = [classify(m) for m in raw]
                 import workspace_data
 
-                messages = workspace_data.apply_rules(messages)
+                messages = [
+                    {**m, **s.get("overrides", {}).get(m["id"], {})}
+                    for m in workspace_data.apply_rules(messages)
+                ]
                 s["messages"] = {m["id"]: m for m in messages}
                 return self.send({"messages": messages, "limited": limited})
             result = graph(
                 s,
                 "/me/mailFolders/inbox/messages?$top=100&$orderby=receivedDateTime%20desc",
             )
-            messages = [
-                {**classify(m), **s.get("overrides", {}).get(m["id"], {})}
-                for m in result["value"]
-            ]
+            messages = [classify(m) for m in result["value"]]
             import workspace_data
 
-            messages = workspace_data.apply_rules(messages)
+            messages = [
+                {**m, **s.get("overrides", {}).get(m["id"], {})}
+                for m in workspace_data.apply_rules(messages)
+            ]
             s["messages"] = {m["id"]: m for m in messages}
             return self.send(
                 {"messages": messages, "limited": bool(result.get("@odata.nextLink"))}
@@ -467,6 +467,7 @@ class Handler(BaseHTTPRequestHandler):
             import local_profile
             import teams_connection
 
+            session["lastPlanFresh"] = False
             statuses, tasks = {}, []
             # An unavailable calendar prevents creating a misleading conflict-free plan.
             if session.get("mode") == "desktop":
@@ -554,6 +555,26 @@ class Handler(BaseHTTPRequestHandler):
                 lunch_start=preferences["lunchStart"],
                 lunch_end=preferences["lunchEnd"],
             )
+            plan["generatedAt"] = datetime.now(timezone.utc).isoformat()
+            plan["calendarValidUntil"] = (
+                datetime.now(timezone.utc) + timedelta(seconds=120)
+            ).isoformat()
+            plan["horizonEnd"] = (
+                datetime.now(timezone.utc) + timedelta(days=7)
+            ).isoformat()
+            calendar_only = [
+                e for e in events if not e.get("pinnedTask") and e.get("busy", True)
+            ]
+            for event in plan["meetings"]:
+                if event.get("pinnedTask"):
+                    event["conflict"] = any(
+                        datetime.fromisoformat(other["start"])
+                        < datetime.fromisoformat(event["end"])
+                        and datetime.fromisoformat(other["end"])
+                        > datetime.fromisoformat(event["start"])
+                        for other in calendar_only
+                    )
+            session["lastPlanFresh"] = True
             session["lastPlan"] = plan
             return self.send({**plan, "sources": statuses, "tasks": all_tasks})
         files = {

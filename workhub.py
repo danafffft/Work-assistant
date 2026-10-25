@@ -10,6 +10,12 @@ import workspace_data as data
 def read(session):
     tasks = data.items("task")
     return {
+        "calendarFresh": bool(
+            session.get("lastPlanFresh")
+            and session.get("lastPlan", {}).get("calendarValidUntil")
+            and datetime.fromisoformat(session["lastPlan"]["calendarValidUntil"])
+            > datetime.now().astimezone()
+        ),
         "tasks": tasks,
         "rules": data.items("rule"),
         "journal": sorted(data.items("journal"), key=lambda e: e["at"], reverse=True)[
@@ -114,8 +120,14 @@ def action(session, body, categories):
                 and end.hour + end.minute / 60 > p["lunchStart"]
             ):
                 raise ValueError("Цей час перетинається з обідом.")
-            if "lastPlan" not in session:
-                raise ValueError("Спочатку оновіть календар.")
+            if not session.get("lastPlanFresh") or "lastPlan" not in session:
+                raise ValueError("Спочатку успішно оновіть календар.")
+            plan = session["lastPlan"]
+            valid_until = datetime.fromisoformat(plan["calendarValidUntil"])
+            if datetime.now(zone) > valid_until:
+                raise ValueError("Дані календаря застаріли. Оновіть графік.")
+            if end > datetime.fromisoformat(plan["horizonEnd"]):
+                raise ValueError("Час поза перевіреним тижнем календаря.")
             busy = list(session["lastPlan"]["meetings"])
             for other in data.items("task"):
                 if (

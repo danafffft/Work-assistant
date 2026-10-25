@@ -34,6 +34,14 @@ function renderHub() {
       `Потрібно відповісти: ${active.filter((t) => t.source === "Лист · відповісти").length} · Очікуєте відповідь: ${active.filter((t) => t.source === "Лист · очікування").length}`,
     ),
   );
+  if (workspace.calendarFresh === false)
+    summary.append(
+      element(
+        "p",
+        "tag high",
+        "Календар не оновлено. Перелік нарад може бути застарілим.",
+      ),
+    );
   const top = [...active]
     .sort(
       (a, b) =>

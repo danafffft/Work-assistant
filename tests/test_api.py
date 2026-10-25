@@ -179,3 +179,37 @@ class ApiTests(unittest.TestCase):
             self.request("/api/tasks-restore", {})
             self.assertEqual(len(self.request("/api/plan")["tasks"]), 1)
             self.assertEqual(jira.call_count, 1)
+
+    def test_failed_calendar_invalidates_pin_permission(self):
+        app.SESSIONS["test-session"]["lastPlanFresh"] = True
+        with patch(
+            "desktop_outlook.calendar_events", side_effect=ValueError("unavailable")
+        ):
+            with self.assertRaises(urllib.error.HTTPError):
+                self.request("/api/plan")
+        self.assertFalse(app.SESSIONS["test-session"]["lastPlanFresh"])
+
+    def test_manual_change_wins_over_saved_sender_rule(self):
+        self.request(
+            "/api/workspace",
+            {
+                "action": "rule",
+                "sender": "person@example.com",
+                "category": "Звіти",
+                "priority": "low",
+            },
+        )
+        original = {
+            "id": "one",
+            "subject": "Hi",
+            "from": {
+                "emailAddress": {"address": "person@example.com", "name": "Test Person"}
+            },
+        }
+        app.SESSIONS["test-session"]["messages"] = {"one": app.classify(original)}
+        self.request(
+            "/api/override", {"id": "one", "category": "Навчання", "priority": "high"}
+        )
+        with patch("desktop_outlook.messages", return_value=([original], False)):
+            result = self.request("/api/messages")
+        self.assertEqual(result["messages"][0]["category"], "Навчання")

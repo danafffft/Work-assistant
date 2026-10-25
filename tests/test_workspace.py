@@ -109,7 +109,16 @@ class WorkspaceTests(TestCase):
         start = day.replace(hour=10, minute=0, second=0, microsecond=0).isoformat()
         workhub.action({}, {"action": "task", "title": "First", "minutes": 60}, [])
         first = data.items("task")[0]
-        session = {"lastPlan": {"meetings": []}}
+        session = {
+            "lastPlanFresh": True,
+            "lastPlan": {
+                "meetings": [],
+                "calendarValidUntil": (
+                    datetime.now(ZoneInfo("Europe/Kyiv")) + timedelta(minutes=2)
+                ).isoformat(),
+                "horizonEnd": (day + timedelta(days=1)).isoformat(),
+            },
+        }
         workhub.action(
             session, {"action": "pin", "id": first["id"], "start": start}, []
         )

@@ -467,6 +467,23 @@ function renderPlan() {
       element("p", "source-status", name.toUpperCase() + ": " + status),
     ),
   );
+  if (planData.stale)
+    sources.prepend(
+      element(
+        "p",
+        "tag high",
+        "Показано попередній графік. Перед діями оновіть календар.",
+      ),
+    );
+  if (planData.generatedAt)
+    sources.append(
+      element(
+        "p",
+        "",
+        "Графік обчислено: " +
+          new Date(planData.generatedAt).toLocaleString("uk-UA"),
+      ),
+    );
   const all = [
     ...planData.meetings.map((e) => ({ ...e, source: "Календар" })),
     ...planData.blocks,
@@ -491,6 +508,10 @@ function renderPlan() {
             }),
         ),
       );
+      if (block.conflict)
+        card.append(
+          element("span", "tag high", "Конфлікт із календарем — змініть час"),
+        );
       if (block.overdue)
         card.append(element("span", "tag high", "Після дедлайну"));
       if (block.url) {
@@ -535,11 +556,19 @@ async function refreshPlan() {
   try {
     planData = await api("/api/plan");
     renderPlan();
+    if (!$("#hub-panel").hidden && typeof loadHub === "function")
+      await loadHub();
   } catch (e) {
-    planData = null;
+    if (planData) planData.stale = true;
     renderPlan();
     $("#plan-sources").replaceChildren(
-      element("p", "", "Графік недоступний: " + e.message),
+      element(
+        "p",
+        "",
+        (planData
+          ? "Показано попередній графік — дані застаріли. "
+          : "Графік недоступний. ") + e.message,
+      ),
     );
   }
 }
@@ -715,3 +744,10 @@ $("#restore-tasks").onclick = () =>
     await api("/api/tasks-restore", {});
     await refreshPlan();
   });
+
+$("#onboarding-profile").onclick = () => {
+  $("#profile-nav").click();
+  $("#onboarding").hidden = true;
+  $("#jira-email").focus();
+};
+$("#onboarding-dismiss").onclick = () => ($("#onboarding").hidden = true);
