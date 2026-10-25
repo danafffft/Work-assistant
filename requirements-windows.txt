@@ -1,3 +1,4 @@
 pywin32==311; sys_platform == 'win32'
 pywebview==6.1; sys_platform == 'win32'
 tzdata==2025.2; sys_platform == 'win32'
+msal==1.34.0; sys_platform == 'win32'

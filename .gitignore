@@ -5,3 +5,14 @@ __pycache__/
 build/
 dist/
 *.spec
+# Local user data and diagnostics must never enter Git.
+profile.json
+profile.tmp
+*.log
+*.token
+*.pem
+*.pfx
+*.p12
+.env.*
+!.env.example
+user-data/

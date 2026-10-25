@@ -1,20 +1,254 @@
 <!doctype html>
-<html lang="uk"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Work Assistant</title><link rel="stylesheet" href="/style.css"></head>
-<body>
-<nav class="sidebar" aria-label="Категорії пошти">
-<div class="logo">wa<span>✳︎</span></div><p class="wordmark">WORK ASSISTANT</p><div class="nav-label">ВАШ РОБОЧИЙ ПРОСТІР</div>
-<button class="nav-item active" data-category="">▤ <span>Усі вхідні</span></button>
-<button class="nav-item" data-category="Від людей">♙ <span>Від людей</span></button>
-<button class="nav-item" data-category="Звіти">▱ <span>Звіти</span></button>
-<button class="nav-item" data-category="Навчання">◇ <span>Навчання</span></button>
-<button class="nav-item" data-category="Автоматичні повідомлення">↻ <span>Автоматичні</span></button>
-<button class="nav-item" data-category="Jira та Confluence">▧ <span>Jira та Confluence</span></button>
-<div class="nav-label">КАЛЕНДАР</div><button class="nav-item" id="plan-nav">▦ <span>Робочий графік</span></button><button class="nav-item" id="meetings-nav">◷ <span>Наради</span></button>
-<button class="nav-item" id="profile-nav">⚙ <span>Профіль і підключення</span></button><div class="sidebar-bottom"><span class="live-dot"></span><span id="connection">Демонстраційний режим</span><button id="connect">Підключити Outlook ↗</button><button id="logout" hidden>Відключити</button></div>
-</nav>
-<div class="workspace"><header><div class="eyebrow">МЕНШЕ ШУМУ. БІЛЬШЕ ФОКУСУ.</div><div class="heading-row"><div><h1>Важливе — поруч<span>.</span></h1><p>Ваші листи та зустрічі у своєму ритмі.</p></div><div class="date" id="today"></div></div></header>
-<main><section class="toolbar"><div><h2 id="view-title">Усі вхідні <span id="count"></span></h2><p id="notice">Демо-листи. Зміни не надсилаються в Outlook.</p></div><div class="actions"><button id="auto-toggle" aria-pressed="true">Авто: 30 с</button><button id="refresh">↻ Оновити</button><button id="save" class="primary">Зберегти категорії</button></div></section><div id="error" role="status"></div>
-<div class="filters"><input id="search" placeholder="⌕  Пошук у вашій пошті" aria-label="Пошук"><select id="category" aria-label="Категорія"><option value="">Усі категорії</option><option>Від людей</option><option>Звіти</option><option>Навчання</option><option>Автоматичні повідомлення</option><option>Jira та Confluence</option></select><select id="priority" aria-label="Пріоритет"><option value="">Усі пріоритети</option><option value="high">Високий</option><option value="normal">Звичайний</option><option value="low">Низький</option></select></div>
-<section id="profile-panel" hidden><h2>Ваш профіль і підключення</h2><p>Один робочий email для всіх сервісів. Реєстрація на зовнішньому сервері не потрібна.</p><p>Email і адреса Jira зберігаються лише на цьому комп’ютері. Токен — лише в пам’яті до закриття або відключення Outlook. Для Jira Cloud: email та API token; для Jira Server / Data Center: персональний access token. Пароль не потрібен.</p><form id="jira-form"><label>Адреса Jira (необов’язково)<input id="jira-url" type="url" placeholder="https://company.atlassian.net"></label><label>Робочий email<input id="jira-email" type="email" autocomplete="username"></label><label>API-токен<input id="jira-token" type="password" autocomplete="off"></label><button type="submit">Зберегти профіль</button></form><p id="profile-result" role="status"></p></section><section id="plan-panel" hidden>
-<div class="plan-heading"><h2>Ваш робочий графік</h2><span class="tag">Чернетка · 7 днів</span></div><p>Зустрічі залишаються на своїх місцях, задачі займають вільні проміжки. План не записується в календар.</p><div id="plan-sources"></div><div id="plan-blocks"></div><div id="plan-backlog"></div></section><div class="columns"><section class="mail-list"><div class="section-caption">ВАША ПОШТА · ЗА ПРІОРИТЕТОМ</div><div id="messages"></div></section><section id="detail" class="detail" aria-label="Перегляд листа"><span class="eyebrow">ПЕРЕГЛЯД ЛИСТА</span><h2>Оберіть лист</h2><p>Тут з’являться відправник, текст і дії.</p></section><aside><div class="aside-title"><span>✳︎</span><h2>Від людей</h2></div><p>Особисті звернення.<br>Спочатку найважливіше.</p><div id="people"></div></aside></div>
-<footer><span class="live-dot"></span> Наради приймаються лише за вільного часу під час оновлення. Конфлікти — на ваш розгляд.</footer></main></div><script src="/app.js"></script></body></html>
+<html lang="uk">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Work Assistant</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <nav class="sidebar" aria-label="Категорії пошти">
+      <div class="logo">wa<span>✳︎</span></div>
+      <p class="wordmark">WORK ASSISTANT</p>
+      <div class="nav-label">ВАШ РОБОЧИЙ ПРОСТІР</div>
+      <button class="nav-item active" data-category="">
+        ▤ <span>Усі вхідні</span>
+      </button>
+      <button class="nav-item" data-category="Від людей">
+        ♙ <span>Від людей</span>
+      </button>
+      <button class="nav-item" data-category="Звіти">
+        ▱ <span>Звіти</span>
+      </button>
+      <button class="nav-item" data-category="Навчання">
+        ◇ <span>Навчання</span>
+      </button>
+      <button class="nav-item" data-category="Автоматичні повідомлення">
+        ↻ <span>Автоматичні</span>
+      </button>
+      <button class="nav-item" data-category="Jira та Confluence">
+        ▧ <span>Jira та Confluence</span>
+      </button>
+      <div class="nav-label">КАЛЕНДАР</div>
+      <button class="nav-item" id="plan-nav">
+        ▦ <span>Робочий графік</span></button
+      ><button class="nav-item" id="meetings-nav">◷ <span>Наради</span></button>
+      <button class="nav-item" id="profile-nav">
+        ⚙ <span>Профіль і підключення</span>
+      </button>
+      <div class="sidebar-bottom">
+        <span class="live-dot"></span
+        ><span id="connection">Демонстраційний режим</span
+        ><button id="connect">Підключити Outlook ↗</button
+        ><button id="logout" hidden>Відключити</button>
+      </div>
+    </nav>
+    <div class="workspace">
+      <header>
+        <div class="eyebrow">МЕНШЕ ШУМУ. БІЛЬШЕ ФОКУСУ.</div>
+        <div class="heading-row">
+          <div>
+            <h1>Важливе — поруч<span>.</span></h1>
+            <p>Ваші листи та зустрічі у своєму ритмі.</p>
+          </div>
+          <div class="date" id="today"></div>
+        </div>
+      </header>
+      <main>
+        <section class="toolbar">
+          <div>
+            <h2 id="view-title">Усі вхідні <span id="count"></span></h2>
+            <p id="notice">Демо-листи. Зміни не надсилаються в Outlook.</p>
+          </div>
+          <div class="actions">
+            <button id="auto-toggle" aria-pressed="true">Авто: 30 с</button
+            ><button id="refresh">↻ Оновити</button
+            ><button id="save" class="primary">Зберегти категорії</button>
+          </div>
+        </section>
+        <div id="error" role="alert"></div>
+        <div id="sync-status" role="status" aria-live="polite"></div>
+        <div class="filters">
+          <input
+            id="search"
+            placeholder="⌕  Пошук у вашій пошті"
+            aria-label="Пошук"
+          /><select id="category" aria-label="Категорія">
+            <option value="">Усі категорії</option>
+            <option>Від людей</option>
+            <option>Звіти</option>
+            <option>Навчання</option>
+            <option>Автоматичні повідомлення</option>
+            <option>Jira та Confluence</option></select
+          ><select id="priority" aria-label="Пріоритет">
+            <option value="">Усі пріоритети</option>
+            <option value="high">Високий</option>
+            <option value="normal">Звичайний</option>
+            <option value="low">Низький</option>
+          </select>
+        </div>
+        <section id="profile-panel" hidden>
+          <h2>Ваш профіль і підключення</h2>
+          <p>
+            Один робочий email для всіх сервісів. Реєстрація на зовнішньому
+            сервері не потрібна.
+          </p>
+          <p>
+            Email і адреса Jira зберігаються лише на цьому комп’ютері. Токен —
+            лише в пам’яті до закриття або відключення Outlook. Для Jira Cloud:
+            email та API token; для Jira Server / Data Center: персональний
+            access token. Пароль не потрібен.
+          </p>
+          <form id="jira-form">
+            <label
+              >Адреса Jira (необов’язково)<input
+                id="jira-url"
+                type="url"
+                placeholder="https://company.atlassian.net" /></label
+            ><label
+              >Робочий email<input
+                id="jira-email"
+                type="email"
+                autocomplete="username" /></label
+            ><label
+              >API-токен<input
+                id="jira-token"
+                type="password"
+                autocomplete="off"
+            /></label>
+            <fieldset>
+              <legend>Робочий графік</legend>
+              <label
+                >Часовий пояс (IANA)<input
+                  id="work-zone"
+                  value="Europe/Kyiv"
+                  placeholder="Europe/Warsaw" /></label
+              ><label
+                >Початок<input
+                  id="work-start"
+                  type="number"
+                  min="0"
+                  max="23"
+                  value="9" /></label
+              ><label
+                >Кінець<input
+                  id="work-end"
+                  type="number"
+                  min="1"
+                  max="24"
+                  value="18"
+              /></label>
+              <label
+                >Обід з<input
+                  id="lunch-start"
+                  type="number"
+                  min="0"
+                  max="23"
+                  value="13" /></label
+              ><label
+                >Обід до<input
+                  id="lunch-end"
+                  type="number"
+                  min="0"
+                  max="24"
+                  value="14"
+              /></label>
+              <p>Однакові години обіду — без перерви.</p>
+              <div id="workdays">
+                <label><input type="checkbox" value="0" checked />Пн</label
+                ><label><input type="checkbox" value="1" checked />Вт</label
+                ><label><input type="checkbox" value="2" checked />Ср</label
+                ><label><input type="checkbox" value="3" checked />Чт</label
+                ><label><input type="checkbox" value="4" checked />Пт</label
+                ><label><input type="checkbox" value="5" />Сб</label
+                ><label><input type="checkbox" value="6" />Нд</label>
+              </div>
+            </fieldset>
+            <fieldset>
+              <legend>Автоматизація</legend>
+              <label
+                >Оновлювати кожні (секунди)<input
+                  id="refresh-seconds"
+                  type="number"
+                  min="30"
+                  max="3600"
+                  value="30" /></label
+              ><label class="check"
+                ><input id="auto-accept" type="checkbox" checked />Приймати
+                запрошення, якщо основний календар вільний</label
+              >
+              <p>
+                Відповідь надсилається організатору. Конфлікти, повторювані та
+                цілоденні зустрічі залишаються для ручного рішення.
+              </p>
+            </fieldset>
+            <fieldset>
+              <legend>Microsoft Teams</legend>
+              <p>
+                Використовуйте свій робочий обліковий запис. Потрібна дозволена
+                IT реєстрація публічного Microsoft-застосунку з device flow і
+                delegated Chat.Read та User.Read. Пароль вводиться тільки на
+                сайті Microsoft.
+              </p>
+              <label
+                >Application (client) ID<input
+                  id="teams-client"
+                  autocomplete="off"
+                  placeholder="ID застосунку від вашого IT" /></label
+              ><button id="teams-connect" type="button">Увійти в Teams</button
+              ><button id="teams-disconnect" type="button">
+                Відключити Teams
+              </button>
+              <p id="teams-status" role="status">Teams не підключено.</p>
+            </fieldset>
+            <button type="submit">Зберегти профіль</button>
+          </form>
+          <p id="profile-result" role="status"></p>
+        </section>
+        <section id="plan-panel" hidden>
+          <div class="plan-heading">
+            <h2>Ваш робочий графік</h2>
+            <span class="tag">Чернетка · 7 днів</span>
+          </div>
+          <p>
+            Зустрічі залишаються на своїх місцях, задачі займають вільні
+            проміжки. План не записується в календар.
+          </p>
+          <div id="plan-sources"></div>
+          <div id="plan-blocks"></div>
+          <div id="plan-backlog"></div>
+          <button id="restore-tasks">Повернути прибрані задачі</button>
+          <p>
+            Прибирання діє лише в поточному сеансі й не змінює задачі в Jira або
+            Teams.
+          </p>
+        </section>
+        <div class="columns">
+          <section class="mail-list">
+            <div class="section-caption">ВАША ПОШТА · ЗА ПРІОРИТЕТОМ</div>
+            <div id="messages"></div>
+          </section>
+          <section id="detail" class="detail" aria-label="Перегляд листа">
+            <span class="eyebrow">ПЕРЕГЛЯД ЛИСТА</span>
+            <h2>Оберіть лист</h2>
+            <p>Тут з’являться відправник, текст і дії.</p>
+          </section>
+          <aside>
+            <div class="aside-title">
+              <span>✳︎</span>
+              <h2>Від людей</h2>
+            </div>
+            <p>Особисті звернення.<br />Спочатку найважливіше.</p>
+            <div id="people"></div>
+          </aside>
+        </div>
+        <footer>
+          <span id="automation-status"></span>
+          <span class="live-dot"></span> Наради приймаються лише за вільного
+          часу під час оновлення. Конфлікти — на ваш розгляд.
+        </footer>
+      </main>
+    </div>
+    <script src="/app.js"></script>
+  </body>
+</html>
