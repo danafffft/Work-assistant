@@ -56,15 +56,19 @@ def classify(m):
     return {**m, 'category': category, 'priority': 'high' if urgent else 'low' if category == 'Автоматичні повідомлення' else 'normal', 'meeting': m.get('@odata.type', '').endswith('eventMessageRequest')}
 
 
-def request(url, data=None, token=None, method=None, form=False):
-    headers = {'Accept': 'application/json'}
+def request(url, data=None, token=None, method=None, form=False, headers=None, no_redirect=False):
+    headers = {**(headers or {}), 'Accept': 'application/json'}
     if token:
         headers['Authorization'] = 'Bearer ' + token
         headers['Prefer'] = 'outlook.timezone="UTC"'
     if data is not None:
         headers['Content-Type'] = 'application/x-www-form-urlencoded' if form else 'application/json'
         data = (urllib.parse.urlencode(data) if form else json.dumps(data)).encode()
-    with urllib.request.urlopen(urllib.request.Request(url, data=data, headers=headers, method=method), timeout=30) as r:
+    class NoRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, req, fp, code, msg, headers, newurl):
+            raise urllib.error.HTTPError(req.full_url, code, 'Redirect refused', headers, fp)
+    opener = urllib.request.build_opener(NoRedirect()) if no_redirect else urllib.request.build_opener()
+    with opener.open(urllib.request.Request(url, data=data, headers=headers, method=method), timeout=30) as r:
         raw = r.read()
         return json.loads(raw) if raw else {}
 
@@ -170,6 +174,31 @@ class Handler(BaseHTTPRequestHandler):
             messages = [classify(m) for m in result['value']]
             s['messages'] = {m['id']: m for m in messages}
             return self.send({'messages': messages, 'limited': bool(result.get('@odata.nextLink'))})
+        if url.path == '/api/plan':
+            session = self.session()
+            if not session or session['expires'] < time.time(): return self.send({'error': 'Підключіть Outlook.'}, 401)
+            from datetime import datetime, timezone, timedelta
+            from integrations import jira_tasks
+            from planning import build_plan
+            statuses, tasks = {}, []
+            # An unavailable calendar prevents creating a misleading conflict-free plan.
+            if session.get('mode') == 'desktop':
+                import desktop_outlook
+                events = desktop_outlook.calendar_events(session['store'])
+            else:
+                now = datetime.now(timezone.utc)
+                query = urllib.parse.urlencode({'startDateTime': now.isoformat(), 'endDateTime': (now+timedelta(days=7)).isoformat(), '$top': 1000})
+                result = graph(session, '/me/calendarView?' + query)
+                if result.get('@odata.nextLink'): raise ValueError('Calendar incomplete')
+                events = [{'id': e['id'], 'title': e.get('subject', 'Нарада'), 'start': e['start']['dateTime'].rstrip('Z')+'+00:00', 'end': e['end']['dateTime'].rstrip('Z')+'+00:00', 'busy': e.get('showAs') != 'free'} for e in result.get('value', []) if not e.get('isCancelled')]
+            for key, loader in [('jira', lambda: jira_tasks(request, session.get('jira')))]:
+                try:
+                    loaded, statuses[key] = loader()
+                    tasks.extend(loaded)
+                except Exception:
+                    statuses[key] = 'Не вдалося оновити джерело. Перевірте адресу, доступ і дозволи; його задач немає у графіку.'
+            plan = build_plan(tasks, events, timezone=os.getenv('WORK_TIMEZONE', 'Europe/Kyiv'), start_hour=int(os.getenv('WORK_START_HOUR', '9')), end_hour=int(os.getenv('WORK_END_HOUR', '18')))
+            return self.send({**plan, 'sources': statuses, 'tasks': tasks})
         files = {'/': ('index.html','text/html'), '/app.js': ('app.js','text/javascript'), '/style.css': ('style.css','text/css')}
         if url.path in files:
             name, mime = files[url.path]; return self.send((ROOT/'web'/name).read_bytes(), mime=mime)
@@ -196,6 +225,15 @@ class Handler(BaseHTTPRequestHandler):
             size = int(self.headers.get('Content-Length', '0'))
             if not 0 <= size <= 8192: return self.send({'error': 'Запит завеликий'}, 413)
             body = json.loads(self.rfile.read(size) or b'{}')
+            if self.path == '/api/jira-settings':
+                jira_url = str(body.get('url', '')).strip().rstrip('/')
+                parsed = urllib.parse.urlsplit(jira_url)
+                if parsed.scheme != 'https' or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment:
+                    return self.send({'error': 'Вкажіть HTTPS-адресу вашого сервера Jira без пароля у посиланні.'}, 400)
+                token = str(body.get('token', '')).strip()
+                if not token: return self.send({'error': 'Вкажіть API-токен у цьому вікні. Не надсилайте його у чат.'}, 400)
+                s['jira'] = {'url': jira_url, 'email': str(body.get('email', '')).strip(), 'token': token}
+                return self.send({'ok': True})
             if self.path == '/api/logout':
                 SESSIONS.pop(self.cookie('session'), None); return self.send({'ok': True})
             if self.path == '/api/meetings':

@@ -99,8 +99,8 @@ def open_message(store_id, message_id):
 def accept_if_free(store_id, message_id):
     with outlook() as ns:
         invitation = ns.GetItemFromID(message_id, store_id)
-        # False prevents creating a calendar item merely while checking it.
-        appointment = invitation.GetAssociatedAppointment(False)
+        # Create the tentative calendar copy when Outlook has not processed the invitation yet.
+        appointment = invitation.GetAssociatedAppointment(True)
         if appointment is None:
             return 'Події ще немає в календарі — ручний перегляд'
         if appointment.ResponseStatus in (1, 3):
@@ -127,3 +127,20 @@ def accept_if_free(store_id, message_id):
         response = appointment.Respond(3, True, False)
         response.Send()
         return 'Автоматично прийнято'
+
+
+def calendar_events(store_id, days=7):
+    from datetime import timedelta
+    now = datetime.now().astimezone()
+    finish = now + timedelta(days=days)
+    with outlook() as ns:
+        items = ns.GetStoreFromID(store_id).GetDefaultFolder(9).Items
+        items.Sort('[Start]')
+        items.IncludeRecurrences = True
+        start_text, end_text = now.strftime('%m/%d/%Y %I:%M %p'), finish.strftime('%m/%d/%Y %I:%M %p')
+        filtered = items.Restrict(f"[Start] < '{end_text}' AND [End] > '{start_text}'")
+        events = []
+        for item in filtered:
+            events.append({'id': str(item.EntryID), 'title': str(item.Subject or 'Нарада'), 'start': utc(item.StartUTC).isoformat(), 'end': utc(item.EndUTC).isoformat(), 'busy': item.BusyStatus != 0})
+            if len(events) >= 1000: raise ValueError('Too many calendar occurrences')
+        return events

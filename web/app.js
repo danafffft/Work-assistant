@@ -1,4 +1,5 @@
 const $ = s => document.querySelector(s);
+let autoUpdate=true, planData=null;
 let connected=false, csrf='', busy=false, meetingsOnly=false, selectedId=null, desktop=false;
 let messages=[
 {id:'demo1',subject:'Терміново: узгодити план на понеділок',from:{emailAddress:{name:'Олена Коваль',address:'olena@example.com'}},bodyPreview:'Привіт! Переглянь, будь ласка, пропозицію та напиши, коли зручно обговорити.',category:'Від людей',priority:'high'},
@@ -18,16 +19,33 @@ function render(){const q=$('#search').value.toLowerCase();const list=messages.f
 }
 async function api(path,body){const r=await fetch(path,body===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},body:JSON.stringify(body)});const data=await r.json();if(!r.ok)throw Error(data.error||'Помилка запиту');return data;}
 async function run(fn){if(busy)return;busy=true;$('#error').textContent='';document.querySelectorAll('button').forEach(b=>b.disabled=true);try{await fn();}catch(e){$('#error').textContent=e.message;}finally{busy=false;document.querySelectorAll('button').forEach(b=>b.disabled=false);}}
-async function refresh(){if(!connected){$('#notice').textContent='Демо-режим. Для вашої пошти підключіть Outlook.';return;}const data=await api('/api/messages');messages=data.messages;render();$('#notice').textContent=`Завантажено ${messages.length} листів.${data.limited?' Показано лише 100 останніх.':''} Перевірка запрошень…`;const meetings=await api('/api/meetings',{});messages.forEach(m=>m.meetingStatus=meetings.results[m.id]);render();$('#notice').textContent=`Оновлено ${messages.length} листів.${data.limited?' Показано лише 100 останніх.':''} Запрошення перевірено.`;}
+async function refresh(){if(!connected){$('#notice').textContent='Демо-режим. Для вашої пошти підключіть Outlook.';return;}const data=await api('/api/messages');messages=data.messages;render();$('#notice').textContent=`Завантажено ${messages.length} листів.${data.limited?' Показано лише 100 останніх.':''} Перевірка запрошень…`;const meetings=await api('/api/meetings',{});messages.forEach(m=>m.meetingStatus=meetings.results[m.id]);render();$('#notice').textContent=`Оновлено ${messages.length} листів.${data.limited?' Показано лише 100 останніх.':''} Запрошення перевірено. ${new Date().toLocaleTimeString('uk-UA')}`;await refreshPlan();}
 $('#refresh').onclick=()=>run(refresh);
 $('#save').onclick=()=>run(async()=>{if(!connected)throw Error('Спочатку підключіть Outlook.');if(!confirm('Записати категорії та пріоритети для всіх завантажених листів в Outlook?'))return;let done=0;for(const m of messages){await api('/api/categorize',{id:m.id});$('#notice').textContent=`Збережено ${++done} із ${messages.length}`;}});
 $('#logout').onclick=()=>run(async()=>{await api('/api/logout',{});location.reload();});
 for(const selector of ['#category','#priority','#search'])$(selector).addEventListener('input',render);
 function showDetail(m){selectedId=m.id;const target=$('#detail');target.replaceChildren(element('span','eyebrow','ПЕРЕГЛЯД ЛИСТА'),element('h2','',m.subject||'(без теми)'),element('p','',`${m.from?.emailAddress?.name||''} · ${m.from?.emailAddress?.address||''}`),element('span','tag '+m.priority,labels[m.priority]),element('span','tag',m.category),element('div','body',m.bodyPreview||'Текст відсутній. Відкрийте оригінал в Outlook.'));if(m.meeting)target.append(element('p','',m.meetingStatus||'Запрошення на нараду'));if(connected&&desktop){const b=element('button','','Відкрити оригінал в Outlook ↗');b.onclick=()=>run(()=>api('/api/open',{id:m.id}));target.append(b);}else if(m.webLink){try{const u=new URL(m.webLink);if(u.protocol==='https:'){const a=element('a','','Відкрити в Outlook ↗');a.href=u.href;a.target='_blank';a.rel='noopener noreferrer';target.append(a);}}catch{}}document.querySelectorAll('#messages .card').forEach((c,i)=>c.classList.toggle('selected',c.querySelector('.subject')?.textContent===(m.subject||'(без теми)')));}
-function chooseCategory(value){meetingsOnly=false;$('#category').value=value;$('#view-title').firstChild.textContent=(value||'Усі вхідні')+' ';document.querySelectorAll('.nav-item').forEach(b=>b.classList.toggle('active',b.dataset.category===value));render();}
+function showMail(){ $('#plan-panel').hidden=true;$('.columns').hidden=false;$('.filters').hidden=false; }
+function chooseCategory(value){showMail();meetingsOnly=false;$('#category').value=value;$('#view-title').firstChild.textContent=(value||'Усі вхідні')+' ';document.querySelectorAll('.nav-item').forEach(b=>b.classList.toggle('active',b.dataset.category===value));render();}
 document.querySelectorAll('[data-category]').forEach(b=>b.onclick=()=>chooseCategory(b.dataset.category));
-$('#meetings-nav').onclick=()=>{meetingsOnly=true;$('#category').value='';$('#view-title').firstChild.textContent='Наради ';document.querySelectorAll('.nav-item').forEach(b=>b.classList.toggle('active',b.id==='meetings-nav'));render();};
+$('#meetings-nav').onclick=()=>{showMail();meetingsOnly=true;$('#category').value='';$('#view-title').firstChild.textContent='Наради ';document.querySelectorAll('.nav-item').forEach(b=>b.classList.toggle('active',b.id==='meetings-nav'));render();};
 $('#category').addEventListener('change',()=>chooseCategory($('#category').value));
 $('#connect').onclick=()=>run(async()=>{await api('/api/connect',{});location.reload();});
 $('#today').textContent=new Date().toLocaleDateString('uk-UA',{weekday:'long',day:'numeric',month:'long'});
 render();run(async()=>{const s=await api('/api/status');connected=s.connected;csrf=s.csrf;desktop=s.desktop;$('#connect').hidden=connected;if(connected){$('#connection').textContent='Outlook підключено';$('#logout').hidden=false;await refresh();}else $('#notice').textContent=desktop?'Натисніть «Підключити Outlook», щоб використати ваш поточний профіль.':'Демо-режим. Для вашої пошти запустіть Windows-застосунок із класичним Outlook.';});
+
+function renderPlan(){
+  const sources=$('#plan-sources'), blocks=$('#plan-blocks'), backlog=$('#plan-backlog');
+  if(!planData){sources.replaceChildren(element('p','','Підключіть Outlook, щоб прочитати календар і скласти графік.'));blocks.replaceChildren();backlog.replaceChildren();return;}
+  sources.replaceChildren(...Object.entries(planData.sources).map(([name,status])=>element('p','source-status',name.toUpperCase()+': '+status)));
+  const all=[...planData.meetings.map(e=>({...e,source:'Календар'})),...planData.blocks].sort((a,b)=>a.start.localeCompare(b.start));
+  blocks.replaceChildren(...all.map(block=>{const card=element('article','card');const date=new Date(block.start),end=new Date(block.end);card.append(element('span','tag',block.source),element('h3','subject',block.title),element('p','',date.toLocaleString('uk-UA')+' — '+end.toLocaleTimeString('uk-UA',{hour:'2-digit',minute:'2-digit'})));if(block.overdue)card.append(element('span','tag high','Після дедлайну'));if(block.url){try{const u=new URL(block.url);if(u.protocol==='https:'){const a=element('a','','Відкрити джерело ↗');a.href=u.href;a.target='_blank';a.rel='noopener noreferrer';card.append(a);}}catch{}}return card;}));
+  if(!all.length)blocks.append(element('p','','Немає зустрічей чи задач із підключених джерел.'));
+  backlog.replaceChildren(...planData.backlog.map(t=>element('p','','Не вмістилося: '+t.title+' · '+t.remainingMinutes+' хв')));
+}
+async function refreshPlan(){try{planData=await api('/api/plan');renderPlan();}catch(e){planData=null;renderPlan();$('#plan-sources').replaceChildren(element('p','', 'Графік недоступний: '+e.message));}}
+$('#plan-nav').onclick=()=>{$('.columns').hidden=true;$('.filters').hidden=true;$('#plan-panel').hidden=false;document.querySelectorAll('.nav-item').forEach(b=>b.classList.toggle('active',b.id==='plan-nav'));renderPlan();};
+$('#auto-toggle').onclick=()=>{autoUpdate=!autoUpdate;$('#auto-toggle').textContent=autoUpdate?'Авто: 30 с':'Авто: пауза';$('#auto-toggle').setAttribute('aria-pressed',String(autoUpdate));};
+setInterval(()=>{if(connected&&autoUpdate&&!busy)run(refresh);},30000);
+
+$('#jira-form').onsubmit=event=>{event.preventDefault();run(async()=>{if(!connected)throw Error('Спочатку підключіть Outlook.');try{await api('/api/jira-settings',{url:$('#jira-url').value,email:$('#jira-email').value,token:$('#jira-token').value});}finally{$('#jira-token').value='';}await refreshPlan();});};
